@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Papelera de Reciclaje - MIMY STOCK</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f9; padding: 20px; color: #333; }
+        .card { background: #fff; padding: 15px; margin-bottom: 20px; border: 1px solid #ccc; border-radius: 5px; }
+        table { width: 100%; border-collapse: collapse; background: #fff; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 14px; }
+        th { background: #e2e2e2; }
+        .btn-restore { background: #28a745; color: white; padding: 5px 10px; text-decoration: none; border-radius: 3px; font-size: 12px; font-weight: bold; }
+        .btn-restore:hover { opacity: 0.8; }
+        .back-link { display: inline-block; margin-bottom: 20px; background: #007bff; color: white; padding: 8px 15px; text-decoration: none; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h2>🗑️ Papelera de Reciclaje - MIMY STOCK</h2>
+    <p>Aquí se encuentran los productos e insumos eliminados. Solo el administrador puede restaurarlos en caso de un error.</p>
+    
+    <a href="/" class="back-link">⬅️ Volver al Panel Principal</a>
+
+    <h3>Productos Eliminados</h3>
+    <table>
+        <tr><th>ID</th><th>Nombre</th><th>Cantidad</th><th>Precio</th><th>Acción</th></tr>
+        {% for p in deleted_products %}
+        <tr>
+            <td>{{ p.id }}</td>
+            <td>{{ p.name }}</td>
+            <td>{{ p.quantity }}</td>
+            <td>$ {{ p.price }} COP</td>
+            <td><a href="/restore/product/{{ p.id }}" class="btn-restore">♻️ Restaurar Producto</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" style="text-align: center; color: #777;">No hay productos en la papelera.</td></tr>
+        {% endfor %}
+    </table>
+
+    <h3 style="margin-top: 30px;">Insumos Eliminados</h3>
+    <table>
+        <tr><th>ID</th><th>Nombre</th><th>Stock</th><th>Unidad</th><th>Acción</th></tr>
+        {% for s in deleted_supplies %}
+        <tr>
+            <td>{{ s.id }}</td>
+            <td>{{ s.name }}</td>
+            <td>{{ s.stock }}</td>
+            <td>{{ s.unit }}</td>
+            <td><a href="/restore/supply/{{ s.id }}" class="btn-restore">♻️ Restaurar Insumo</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" style="text-align: center; color: #777;">No hay insumos en la papelera.</td></tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

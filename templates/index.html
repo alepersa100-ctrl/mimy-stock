@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mimy - Stock & Ventas</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #fff9f5; margin: 0; padding: 0; color: #4a2c1d; display: flex; }
+        
+        .sidebar { width: 260px; background-color: #2c160b; height: 100vh; position: fixed; top: 0; left: 0; padding-top: 20px; box-shadow: 2px 0 5px rgba(0,0,0,0.1); overflow-y: auto; z-index: 1000; }
+        .sidebar-brand { text-align: center; color: white; margin-bottom: 25px; padding: 0 15px; }
+        .sidebar-brand h1 { margin: 0; font-size: 26px; color: #ff8c00; letter-spacing: 1px; }
+        .sidebar-brand p { margin: 5px 0 0 0; font-size: 11px; text-transform: uppercase; color: #d4b29c; }
+        
+        .sidebar-menu { list-style: none; padding: 0; margin: 0; }
+        .sidebar-menu li { padding: 12px 20px; cursor: pointer; color: #e6d2c3; font-weight: 500; display: flex; align-items: center; gap: 12px; transition: 0.2s; border-left: 4px solid transparent; }
+        .sidebar-menu li:hover, .sidebar-menu li.active { background-color: #4a2c1d; color: #fff; border-left-color: #ff8c00; }
+        
+        .main-content { margin-left: 260px; padding: 30px; width: calc(100% - 260px); box-sizing: border-box; }
+        
+        h2, h3 { color: #5c3317; border-bottom: 2px solid #ff8c00; padding-bottom: 5px; margin-top: 20px; }
+        .card { background: #fff; padding: 20px; margin-bottom: 20px; border: 1px solid #e6d2c3; border-radius: 8px; box-shadow: 0 2px 4px rgba(92,51,23,0.05); }
+        table { width: 100%; border-collapse: collapse; background: #fff; margin-top: 10px; border-radius: 6px; overflow: hidden; margin-bottom: 25px; }
+        th, td { border: 1px solid #f0e6df; padding: 10px; text-align: left; font-size: 14px; }
+        th { background: #5c3317; color: white; }
+        input, select { padding: 8px; margin: 4px 0; width: 220px; border: 1px solid #d4b29c; border-radius: 4px; }
+        button { padding: 8px 16px; background: #ff8c00; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        button:hover { opacity: 0.9; }
+        .flex-box { display: flex; gap: 20px; flex-wrap: wrap; }
+        .alert-row { background-color: #ffe6e6 !important; color: #a00; font-weight: bold; }
+        .btn-delete { background: #d9534f; color: white; padding: 4px 8px; text-decoration: none; border-radius: 3px; font-size: 12px; }
+        .btn-delete:hover { opacity: 0.8; }
+        .btn-edit { background: #17a2b8; color: white; padding: 4px 8px; text-decoration: none; border-radius: 3px; font-size: 12px; display: inline-block; margin-bottom: 3px; }
+        .btn-edit:hover { opacity: 0.8; }
+        .btn-restock { background: #28a745; color: white; padding: 4px 8px; text-decoration: none; border-radius: 3px; font-size: 12px; display: inline-block; margin-bottom: 3px; }
+        .btn-restock:hover { opacity: 0.8; }
+        .sale-row, .order-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+        
+        .tab-section { display: none; }
+        .tab-section.active { display: block; }
+    </style>
+    <script>
+        function formatMoney(amount) {
+            return new Intl.NumberFormat('es-CO').format(amount);
+        }
+
+        function switchTab(tabId, element) {
+            document.querySelectorAll('.tab-section').forEach(sec => sec.classList.remove('active'));
+            document.querySelectorAll('.sidebar-menu li').forEach(li => li.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            if(element) element.classList.add('active');
+        }
+
+        function toggleProductFields() {
+            const type = document.getElementById('product_type_select').value;
+            const grandeFields = document.getElementById('grande_fields');
+            const traySizeLabel = document.getElementById('tray_size_label');
+            
+            if (type === 'grande') {
+                grandeFields.style.display = 'block';
+                traySizeLabel.innerText = "Unidades por bandeja grande (ej: 7):";
+            } else {
+                grandeFields.style.display = 'none';
+                traySizeLabel.innerText = "Unidades que trae esta bandeja pequeña (ej: 20 deditos, 15 empanadas):";
+            }
+        }
+
+        function updateItemOptions(typeSelect) {
+            const row = typeSelect.closest('.sale-row') || typeSelect.closest('.order-row');
+            const itemSelect = row.querySelector('select[name*="item_id"]');
+            const modeSelect = row.querySelector('select[name*="sale_mode"]');
+            itemSelect.innerHTML = "";
+            
+            if (typeSelect.value === 'combo') {
+                if (modeSelect) modeSelect.style.display = 'none';
+                {% for combo in combos %}
+                itemSelect.innerHTML += `<option value="{{ combo.id }}">{{ combo.name }} ($${formatMoney({{ combo.price }})} COP)</option>`;
+                {% endfor %}
+            } else {
+                if (modeSelect) modeSelect.style.display = 'inline-block';
+                {% for p in products %}
+                itemSelect.innerHTML += `<option value="{{ p.id }}">{{ p.name }} ({% if p.product_type == 'grande' %}Grande{% else %}Bandeja Pequeña x{{ p.tray_size }}{% endif %})</option>`;
+                {% endfor %}
+            }
+        }
+
+        function addSaleRow() {
+            const container = document.getElementById('sale-items-container');
+            container.appendChild(container.querySelector('.sale-row').cloneNode(true));
+        }
+
+        function addOrderRow() {
+            const container = document.getElementById('order-items-container');
+            container.appendChild(container.querySelector('.order-row').cloneNode(true));
+        }
+
+        function addRecipeRow() {
+            const container = document.getElementById('recipe-container');
+            container.appendChild(container.querySelector('.recipe-row').cloneNode(true));
+        }
+
+        function togglePaymentFields(select) {
+            const advanceDiv = document.getElementById('advance_payment_div');
+            if (select.value === 'Abono') {
+                advanceDiv.style.display = 'block';
+            } else {
+                advanceDiv.style.display = 'none';
+            }
+        }
+
+        function restockProductPrompt(id, name, currentStock) {
+            const addQty = prompt(`¿Cuántas unidades o bandejas deseas agregar al stock de "${name}"? (Stock actual: ${currentStock})`);
+            if (addQty !== null && !isNaN(addQty) && parseFloat(addQty) > 0) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/restock/product/' + id;
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'add_qty';
+                input.value = addQty;
+                form.appendChild(input);
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+
+        function restockSupplyPrompt(id, name, currentStock) {
+            const addQty = prompt(`¿Cuánto stock deseas agregar al insumo "${name}"? (Stock actual: ${currentStock})`);
+            if (addQty !== null && !isNaN(addQty) && parseFloat(addQty) > 0) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/restock/supply/' + id;
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'add_qty';
+                input.value = addQty;
+                form.appendChild(input);
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+
+        function payCreditPrompt(accountId, clientName, currentDebt) {
+            const payAmt = prompt(`Registrar pago o abono para "${clientName}" (Deuda actual: $${formatMoney(currentDebt)} COP):\n¿Cuánto dinero va a pagar/abonar?`);
+            if (payAmt !== null && !isNaN(payAmt) && parseFloat(payAmt) > 0) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/credit/payment/' + accountId;
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'payment_amount';
+                input.value = payAmt;
+                form.appendChild(input);
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <!-- BARRA LATERAL (MENU DINÁMICO POR ROL) -->
+    <div class="sidebar">
+        <div class="sidebar-brand">
+            <h1>Mimy</h1>
+            <p>Pastelitos & Congelados</p>
+        </div>
+        <ul class="sidebar-menu">
+            {% if current_user.role == 'producer' %}
+                <li class="active" onclick="switchTab('tab-stock', this)">📦 Inventario & Stock</li>
+                <li onclick="switchTab('tab-insumos', this)">🌾 Insumos</li>
+            {% else %}
+                <li class="active" onclick="switchTab('tab-caja', this)">💰 Control de Caja</li>
+                <li onclick="switchTab('tab-ventas', this)">🛒 Registrar Venta</li>
+                <li onclick="switchTab('tab-agenda', this)">📅 Agenda de Pedidos</li>
+                <li onclick="switchTab('tab-stock', this)">📦 Inventario & Stock</li>
+                
+                {% if current_user.role == 'admin' %}
+                <li onclick="switchTab('tab-creditos', this)">💳 Cuentas por Cobrar</li>
+                <li onclick="switchTab('tab-pagar', this)">💸 Cuentas por Pagar</li>
+                <li onclick="switchTab('tab-combos', this)">🍟 Combos Fritos</li>
+                <li onclick="switchTab('tab-insumos', this)">🌾 Insumos & Clientes</li>
+                <li onclick="switchTab('tab-historico', this)">🧾 Historial de Ventas</li>
+                <li onclick="switchTab('tab-graficos', this)">📊 Reporte Gráfico</li>
+                <li onclick="window.location.href='/trash'" style="color: #ffb347;">🗑️ Papelera</li>
+                {% else %}
+                <li onclick="switchTab('tab-clientes-emp', this)">👥 Clientes</li>
+                {% endif %}
+            {% endif %}
+        </ul>
+        <div style="position: absolute; bottom: 20px; left: 20px; color: #d4b29c; font-size: 12px;">
+            Usuario: <b>{{ current_user.username }}</b><br>
+            Rol: <i>{% if current_user.role == 'admin' %}Administrador{% elif current_user.role == 'employee' %}Ventas{% else %}Producción{% endif %}</i><br>
+            <a href="/logout" style="color: #d9534f; text-decoration: none; font-weight: bold;">Cerrar Sesión</a>
+        </div>
+    </div>
+
+    <!-- CONTENIDO PRINCIPAL -->
+    <div class="main-content">
+
+        {% if current_user.role != 'producer' %}
+        <!-- 1. CONTROL DE CAJA -->
+        <div id="tab-caja" class="tab-section active">
+            <h2>💰 Control de Caja Diario</h2>
+            <div class="card" style="background: #fff4ec; border-left: 5px solid #ff8c00;">
+                {% if current_cash %}
+                    <p>Estado: <b style="color: {% if current_cash.status == 'Abierta' %}#28a745{% else %}#d9534f{% endif %};">{{ current_cash.status }}</b> | Base Inicial: <b>$ <span class="money">{{ current_cash.initial_cash }}</span> COP</b></p>
+                    <p>Total Ventas Registradas Hoy: <b>$ <span class="money">{{ current_cash.total_sales }}</span> COP</b></p>
+                    <p>Efectivo Total en Caja (Base + Ventas): <b style="color: #28a745; font-size: 16px;">$ <span class="money">{{ current_cash.final_cash }}</span> COP</b></p>
+                    
+                    {% if current_user.role == 'admin' and current_cash.status == 'Abierta' %}
+                    <form method="POST">
+                        <input type="hidden" name="manage_cash" value="1">
+                        <input type="hidden" name="cash_action" value="close">
+                        <button type="submit" style="background: #d9534f;">Cerrar Caja</button>
+                    </form>
+                    {% endif %}
+                {% else %}
+                    <p>No hay caja abierta para hoy.</p>
+                    {% if current_user.role == 'admin' %}
+                    <form method="POST">
+                        <input type="hidden" name="manage_cash" value="1">
+                        <input type="hidden" name="cash_action" value="open">
+                        <input type="number" step="0.01" name="initial_cash" placeholder="Dinero inicial en caja ($ COP)" required>
+                        <button type="submit" style="background: #28a745;">Abrir Caja</button>
+                    </form>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 2. REGISTRAR VENTA -->
+        <div id="tab-ventas" class="tab-section">
+            <h2>🛒 Registrar Venta Inmediata</h2>
+            <div class="card" style="background: #fffaf0;">
+                <form method="POST">
+                    <input type="hidden" name="make_sale" value="1">
+                    <p>
+                        <b>Cliente:</b>
+                        <select name="client_name" style="width: 250px;" required>
+                            <option value="Cliente General">Cliente General</option>
+                            {% for c in clients %}
+                            <option value="{{ c.name }}">{{ c.name }} {% if c.is_corporate %}(Empresarial){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                        
+                        <b style="margin-left: 15px;">Método de Pago:</b>
+                        <select name="payment_method" style="width: 180px;" required>
+                            <option value="Efectivo">💵 Efectivo</option>
+                            <option value="Transferencia">📱 Transferencia</option>
+                            <option value="Credito">💳 Crédito Empresarial</option>
+                        </select>
+                    </p>
+                    <p><b>Ítems a Vender:</b></p>
+                    <div id="sale-items-container">
+                        <div class="sale-row">
+                            <select name="item_type" style="width: 140px;" required onchange="updateItemOptions(this)">
+                                <option value="combo">🍟 Combo Frito</option>
+                                <option value="product">📦 Producto / Bandeja</option>
+                            </select>
+                            <select name="item_id" style="width: 230px;" required>
+                                {% for combo in combos %}
+                                <option value="{{ combo.id }}">{{ combo.name }} ($ <script>document.write(formatMoney({{ combo.price }}));</script> COP)</option>
+                                {% endfor %}
+                            </select>
+                            <select name="sale_mode" style="width: 150px;" required>
+                                <option value="tray">🗂️ Por Bandeja</option>
+                                <option value="unit">🔥 Unidad Suelta</option>
+                            </select>
+                            <input type="number" name="qty_to_sell" value="1" placeholder="Cant" min="1" style="width: 70px;" required>
+                        </div>
+                    </div>
+                    <p style="margin-top: 8px;">
+                        <button type="button" onclick="addSaleRow()" style="background: #5c3317; padding: 5px 10px; font-size: 12px;">➕ Agregar otro ítem</button>
+                    </p>
+                    <br>
+                    <button type="submit" style="background: #ff8c00; font-size: 15px; padding: 10px 20px;">Completar Venta y Generar Recibo</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 3. AGENDA DE PEDIDOS -->
+        <div id="tab-agenda" class="tab-section">
+            <h2>📅 Agendar Pedido (Hora Colombia)</h2>
+            <div class="card" style="background: #f0f8ff;">
+                <form method="POST">
+                    <input type="hidden" name="add_order" value="1">
+                    <p>
+                        <b>Cliente:</b>
+                        <select name="order_client" required style="width: 250px;">
+                            <option value="">Seleccione Cliente</option>
+                            {% for c in clients %}
+                            <option value="{{ c.name }}">{{ c.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <b style="margin-left: 15px;">Fecha y Hora:</b>
+                        <input type="datetime-local" name="scheduled_date" required style="width: 220px;">
+                    </p>
+
+                    <p><b>Productos / Combos del Pedido:</b></p>
+                    <div id="order-items-container">
+                        <div class="order-row">
+                            <select name="order_item_type" style="width: 140px;" required onchange="updateItemOptions(this)">
+                                <option value="combo">🍟 Combo Frito</option>
+                                <option value="product">📦 Producto / Bandeja</option>
+                            </select>
+                            <select name="order_item_id" style="width: 230px;" required>
+                                {% for combo in combos %}
+                                <option value="{{ combo.id }}">{{ combo.name }} ($ <script>document.write(formatMoney({{ combo.price }}));</script> COP)</option>
+                                {% endfor %}
+                            </select>
+                            <select name="order_sale_mode" style="width: 150px;" required>
+                                <option value="tray">🗂️ Por Bandeja</option>
+                                <option value="unit">🔥 Unidad Suelta</option>
+                            </select>
+                            <input type="number" name="order_qty" value="1" placeholder="Cant" min="1" style="width: 70px;" required>
+                        </div>
+                    </div>
+                    <p style="margin-top: 8px;">
+                        <button type="button" onclick="addOrderRow()" style="background: #5c3317; padding: 5px 10px; font-size: 12px;">➕ Agregar otro ítem al pedido</button>
+                    </p>
+
+                    <p style="margin-top: 15px;">
+                        <b>Modalidad de Pago:</b>
+                        <select name="payment_type" id="payment_type_select" onchange="togglePaymentFields(this)" required style="width: 200px;">
+                            <option value="Contraentrega">💵 Contraentrega</option>
+                            <option value="Anticipado">💳 Pagado Anticipado</option>
+                            <option value="Abono">🪙 Dejó Abono</option>
+                            <option value="Credito">📋 Crédito Empresarial</option>
+                        </select>
+                        
+                        <span id="advance_payment_div" style="display: none; margin-left: 15px;">
+                            <b>Valor del Abono ($ COP):</b>
+                            <input type="number" step="0.01" name="advance_payment" placeholder="Ej: 20000" style="width: 180px;">
+                        </span>
+                    </p>
+                    <br>
+                    <button type="submit" style="background: #17a2b8; font-size: 15px; padding: 10px 20px;">📅 Guardar Pedido en Agenda</button>
+                </form>
+            </div>
+
+            {% if orders %}
+            <h3>⏰ Pedidos Pendientes Agendados</h3>
+            <table>
+                <tr><th>Cliente</th><th>Ítems del Pedido</th><th>Programación</th><th>Pago</th><th>Total / Saldo</th><th>Agendado Por</th><th>Acciones</th></tr>
+                {% for o in orders %}
+                <tr>
+                    <td><b>{{ o.client_name }}</b></td>
+                    <td><ul>{% for item in o.items %}<li>{{ item.quantity }}x {{ item.item_name }} ($<script>document.write(formatMoney({{ item.subtotal }}));</script>)</li>{% endfor %}</ul></td>
+                    <td><b>{{ o.scheduled_date }}</b></td>
+                    <td>{{ o.payment_type }} {% if o.payment_type == 'Abono' %}<br>(Abonó: $<script>document.write(formatMoney({{ o.advance_payment }}));</script>){% endif %}</td>
+                    <td>Total: $<script>document.write(formatMoney({{ o.total_amount }}));</script><br>{% if o.remaining_balance > 0 %}<b style="color: #d9534f;">Saldo: $<script>document.write(formatMoney({{ o.remaining_balance }}));</script></b>{% else %}<b style="color: #28a745;">¡Pagado Total!</b>{% endif %}</td>
+                    <td><i>{{ o.seller }}</i></td>
+                    <td>
+                        <a href="/complete/order/{{ o.id }}" style="background: #28a745; color: white; padding: 6px 10px; text-decoration: none; border-radius: 4px; font-size: 12px; display: inline-block; margin-bottom: 4px;">✅ Entregado</a><br>
+                        <a href="/cancel/order/{{ o.id }}" class="btn-delete" onclick="return confirm('¿Seguro que deseas cancelar este pedido?');">❌ Cancelar</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- 4. INVENTARIO Y STOCK -->
+        <div id="tab-stock" class="tab-section {% if current_user.role == 'producer' %}active{% endif %}">
+            <h2>📦 Stock Disponible</h2>
+            <table>
+                <tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Stock Disponible</th><th>Precio Bandeja</th><th>Detalle / Unidades</th> <th>Acciones</th></tr>
+                {% for p in products %}
+                <tr>
+                    <td>{{ p.id }}</td>
+                    <td><b>{{ p.name }}</b></td>
+                    <td>{% if p.product_type == 'grande' %}📦 Producto Grande{% else %}🍟 Bandeja Pequeña (Combos){% endif %}</td>
+                    <td><b>{{ p.stock }} {% if p.product_type == 'grande' %}unidades{% else %}bandejas{% endif %}</b></td>
+                    <td>$ <span class="money">{{ p.tray_price }}</span> COP</td>
+                    <td>{% if p.product_type == 'grande' %}Unidad suelta: $ <span class="money">{{ p.price_per_unit }}</span> | Bandeja de {{ p.tray_size }} unids{% else %}Bandeja de {{ p.tray_size }} unidades{% endif %}</td>
+                    <td>
+                        {% if current_user.role in ['admin', 'producer'] %}
+                        <button type="button" class="btn-restock" onclick="restockProductPrompt('{{ p.id }}', '{{ p.name }}', '{{ p.stock }}')">➕ Reabastecer</button><br>
+                        {% endif %}
+                        {% if current_user.role == 'admin' %}
+                        <button type="button" class="btn-edit" onclick="document.getElementById('edit_product_id').value='{{ p.id }}';document.getElementById('edit_name').value='{{ p.name }}';document.getElementById('edit_stock').value='{{ p.stock }}';document.getElementById('edit_p_unit').value='{{ p.price_per_unit }}';document.getElementById('edit_t_size').value='{{ p.tray_size }}';document.getElementById('edit_t_price').value='{{ p.tray_price }}';document.getElementById('product_type_select').value='{{ p.product_type }}';toggleProductFields();switchTab('tab-stock', document.querySelector('.sidebar-menu li:nth-child(4)'));window.scrollTo({top:0,behavior:'smooth'});">✏️ Editar</button><br>
+                        <a href="/delete/product/{{ p.id }}" class="btn-delete" onclick="return confirm('¿Eliminar producto?');">🗑️ Eliminar</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" style="text-align: center; color: #777;">No hay productos registrados.</td></tr>
+                {% endfor %}
+            </table>
+
+            {% if current_user.role == 'admin' %}
+            <div class="card">
+                <h3>📦 Registrar / Editar Producto</h3>
+                <form method="POST">
+                    <input type="hidden" name="add_product" value="1">
+                    <input type="hidden" id="edit_product_id" name="product_id" value="">
+                    <p>
+                        <b>Tipo de Producto:</b><br>
+                        <select name="product_type" id="product_type_select" onchange="toggleProductFields()" required style="width: 100%;">
+                            <option value="pequeno_bandeja">Bandeja Pequeña (Para Combos)</option>
+                            <option value="grande">Producto Grande (Unidades y Bandejas)</option>
+                        </select>
+                    </p>
+                    <p><input type="text" id="edit_name" name="name" placeholder="Nombre" required style="width: 100%;"></p>
+                    <p><input type="number" step="0.1" id="edit_stock" name="stock" placeholder="Stock inicial" required style="width: 100%;"></p>
+                    
+                    <p><span id="tray_size_label">Unidades por bandeja:</span><br>
+                    <input type="number" step="1" id="edit_t_size" name="tray_size" value="20" required style="width: 100%;"></p>
+                    
+                    <p><input type="number" step="0.01" id="edit_t_price" name="tray_price" placeholder="Precio de la Bandeja ($ COP)" required style="width: 100%;"></p>
+                    
+                    <div id="grande_fields" style="display: none; background: #fff8f0; padding: 8px; border-radius: 4px; border: 1px dashed #ff8c00; margin-top: 5px;">
+                        <p><input type="number" step="0.01" id="edit_p_unit" name="price_per_unit" placeholder="Precio Unidad Frita ($ COP)" style="width: 100%;"></p>
+                    </div>
+                    <br>
+                    <button type="submit" style="background: #28a745;">Guardar Producto</button>
+                </form>
+                <script>
+                    document.querySelector('#edit_name').closest('form').addEventListener('submit', function() {
+                        const editId = document.getElementById('edit_product_id').value;
+                        if(editId) this.querySelector('input[name="add_product"]').name = 'edit_product';
+                    });
+                </script>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if current_user.role == 'admin' %}
+        <!-- 5. CUENTAS POR COBRAR (Créditos Empresariales) -->
+        <div id="tab-creditos" class="tab-section">
+            <h2>💳 Cuentas por Cobrar (Empresas / Créditos)</h2>
+            <p style="color: #666; font-size: 14px;">Aquí puedes ver el saldo pendiente de cada cliente empresarial y registrar los pagos totales o abonos al cierre de mes.</p>
+            
+            <table>
+                <tr><th>Cliente Empresarial</th><th>Teléfono</th><th>Dirección</th><th>Deuda Acumulada Actual</th><th>Última Actualización</th><th>Acción / Cierre de Mes</th></tr>
+                {% for acc in credit_accounts %}
+                <tr class="{% if acc.total_debt > 0 %}alert-row{% endif %}">
+                    <td><b>{{ acc.client.name }}</b></td>
+                    <td>{{ acc.client.phone }}</td>
+                    <td>{{ acc.client.address }}</td>
+                    <td><b style="font-size: 16px; color: {% if acc.total_debt > 0 %}#d9534f{% else %}#28a745{% endif %};">$ <span class="money">{{ acc.total_debt }}</span> COP</b></td>
+                    <td>{{ acc.last_updated }}</td>
+                    <td>
+                        {% if acc.total_debt > 0 %}
+                        <button type="button" style="background: #28a745; font-size: 12px; padding: 6px 12px;" onclick="payCreditPrompt('{{ acc.id }}', '{{ acc.client.name }}', '{{ acc.total_debt }}')">💵 Registrar Pago / Abono</button>
+                        {% else %}
+                        <span style="color: #28a745; font-weight: bold;">¡Al día!</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" style="text-align: center; color: #777;">No hay cuentas de crédito empresariales activas. (Marca un cliente como "Empresarial" para iniciar su crédito).</td></tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <!-- 6. CUENTAS POR PAGAR (A Proveedores) -->
+        <div id="tab-pagar" class="tab-section">
+            <h2>💸 Cuentas por Pagar (Proveedores / Insumos)</h2>
+            <p style="color: #666; font-size: 14px;">Lleva el control de las deudas pendientes con proveedores de materias primas o servicios.</p>
+
+            <table>
+                <tr><th>Proveedor</th><th>Concepto / Detalle</th><th>Valor a Pagar</th><th>Fecha Límite</th><th>Estado</th><th>Acción</th></tr>
+                {% for pay in payables %}
+                <tr class="{% if pay.status == 'Pendiente' %}alert-row{% endif %}">
+                    <td><b>{{ pay.provider_name }}</b></td>
+                    <td>{{ pay.concept }}</td>
+                    <td><b>$ <span class="money">{{ pay.amount }}</span> COP</b></td>
+                    <td>{{ pay.due_date }}</td>
+                    <td><b style="color: {% if pay.status == 'Pendiente' %}#d9534f{% else %}#28a745{% endif %};">{{ pay.status }}</b></td>
+                    <td>
+                        {% if pay.status == 'Pendiente' %}
+                        <a href="/payable/pay/{{ pay.id }}" style="background: #28a745; color: white; padding: 6px 10px; text-decoration: none; border-radius: 4px; font-size: 12px; display: inline-block;" onclick="return confirm('¿Marcar como pagada esta cuenta?');">✅ Marcar Pagado</a>
+                        {% else %}
+                        <span style="color: #28a745;">Cancelada</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" style="text-align: center; color: #777;">No hay cuentas por pagar registradas.</td></tr>
+                {% endfor %}
+            </table>
+
+            <div class="card" style="background: #fff8f0; max-width: 500px;">
+                <h3>💸 Registrar Cuenta por Pagar</h3>
+                <form method="POST">
+                    <input type="hidden" name="add_payable" value="1">
+                    <p><input type="text" name="provider_name" placeholder="Nombre del Proveedor" required style="width: 100%;"></p>
+                    <p><input type="text" name="concept" placeholder="Concepto (ej: Compra de harina y queso)" required style="width: 100%;"></p>
+                    <p><input type="number" step="0.01" name="amount" placeholder="Valor total ($ COP)" required style="width: 100%;"></p>
+                    <p><b>Fecha límite de pago:</b><br><input type="date" name="due_date" required style="width: 100%;"></p>
+                    <br>
+                    <button type="submit" style="background: #ff8c00;">Guardar Cuenta por Pagar</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 7. COMBOS FRITOS -->
+        <div id="tab-combos" class="tab-section">
+            <h2>🍟 Combos Registrados</h2>
+            <table>
+                <tr><th>ID</th><th>Nombre</th><th>Precio</th><th>Bandejas Pequeñas que Consume</th><th>Acciones</th></tr>
+                {% for combo in combos %}
+                <tr>
+                    <td>{{ combo.id }}</td>
+                    <td><b>{{ combo.name }}</b></td>
+                    <td>$ <span class="money">{{ combo.price }}</span> COP</td>
+                    <td><ul>{% for item in combo.items %}<li>{{ item.trays_required }} bandejas de: <b>{{ item.product_ref.name }}</b></li>{% endfor %}</ul></td>
+                    <td><a href="/delete/combo/{{ combo.id }}" class="btn-delete" onclick="return confirm('¿Eliminar combo?');">🗑️ Eliminar</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" style="text-align: center; color: #777;">No hay combos creados.</td></tr>
+                {% endfor %}
+            </table>
+
+            <div class="card" style="background: #fffdf0;">
+                <h3>🍟 Crear Combo Frito</h3>
+                <form method="POST">
+                    <input type="hidden" name="add_combo" value="1">
+                    <p><input type="text" name="combo_name" placeholder="Nombre del Combo" required style="width: 100%;"></p>
+                    <p><input type="number" step="0.01" name="combo_price" placeholder="Precio del Combo ($ COP)" required style="width: 100%;"></p>
+                    <p><b>Bandejas Pequeñas que consume:</b></p>
+                    <div id="recipe-container">
+                        <div class="recipe-row" style="margin-bottom: 8px; display: flex; gap: 5px;">
+                            <select name="combo_prod_id" style="flex: 2;" required>
+                                <option value="">Seleccione bandeja pequeña</option>
+                                {% for p in products if p.product_type == 'pequeno_bandeja' %}
+                                <option value="{{ p.id }}">{{ p.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <input type="number" step="0.1" name="combo_req_trays" placeholder="Bandejas" style="flex: 1;" required>
+                        </div>
+                    </div>
+                    <p><button type="button" onclick="addRecipeRow()" style="background: #5c3317; padding: 4px 8px; font-size: 11px;">➕ Agregar otra bandeja</button></p>
+                    <button type="submit" style="background: #ff8c00; margin-top: 10px;">Guardar Combo</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- 8. INSUMOS Y CLIENTES -->
+        <div id="tab-insumos" class="tab-section {% if current_user.role == 'producer' %}active{% endif %}">
+            <h2>🌾 Inventario de Insumos</h2>
+            <table>
+                <tr><th>ID</th><th>Insumo</th><th>Stock Actual</th><th>Unidad</th><th>Estado</th><th>Acción</th></tr>
+                {% for s in supplies %}
+                <tr class="{% if s.stock <= s.min_stock %}alert-row{% endif %}">
+                    <td>{{ s.id }}</td>
+                    <td>{{ s.name }}</td>
+                    <td>{{ s.stock }}</td>
+                    <td>{{ s.unit }}</td>
+                    <td>{% if s.stock <= s.min_stock %}⚠️ Stock Bajo{% else %}🟢 Normal{% endif %}</td>
+                    <td>
+                        {% if current_user.role in ['admin', 'producer'] %}
+                        <button type="button" class="btn-restock" onclick="restockSupplyPrompt('{{ s.id }}', '{{ s.name }}', '{{ s.stock }}')">➕ Reabastecer</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" style="text-align: center; color: #777;">No hay insumos registrados.</td></tr>
+                {% endfor %}
+            </table>
+
+            {% if current_user.role == 'admin' %}
+            <div class="flex-box">
+                <div class="card" style="flex: 1;">
+                    <h3>🌾 Registrar Insumo</h3>
+                    <form method="POST">
+                        <input type="hidden" name="add_supply" value="1">
+                        <p><input type="text" name="supply_name" placeholder="Nombre" required style="width: 100%;"></p>
+                        <p><input type="number" step="0.1" name="supply_stock" placeholder="Stock" required style="width: 48%;"> <input type="text" name="supply_unit" placeholder="Unidad" required style="width: 48%;"></p>
+                        <button type="submit" style="background: #17a2b8;">Guardar Insumo</button>
+                    </form>
+                </div>
+                <div class="card" style="flex: 1;">
+                    <h3>👥 Registrar Cliente (Empresarial o Regular)</h3>
+                    <form method="POST">
+                        <input type="hidden" name="add_client" value="1">
+                        <p><input type="text" name="client_name" placeholder="Nombre / Empresa" required style="width: 100%;"></p>
+                        <p><input type="text" name="client_phone" placeholder="Teléfono" style="width: 100%;"></p>
+                        <p><input type="text" name="client_address" placeholder="Dirección" style="width: 100%;"></p>
+                        <p style="margin-top: 8px;">
+                            <label style="cursor: pointer; font-weight: bold; color: #5c3317;">
+                                <input type="checkbox" name="is_corporate" style="width: auto;"> ¿Es cliente empresarial (maneja crédito)?
+                            </label>
+                        </p>
+                        <button type="submit" style="background: #5c3317; margin-top: 5px;">Registrar Cliente</button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if current_user.role == 'admin' %}
+        <!-- 9. HISTORIAL DE VENTAS -->
+        <div id="tab-historico" class="tab-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; flex-wrap: wrap; gap: 10px;">
+                <h2>🧾 Historial de Ventas</h2>
+                <form method="GET" style="display: flex; gap: 15px; align-items: center; margin: 0;">
+                    <select name="filter_type" onchange="this.form.submit()" style="width: 140px; padding: 5px;">
+                        <option value="month" {% if filter_type == 'month' %}selected{% endif %}>Filtrar por Mes</option>
+                        <option value="day" {% if filter_type == 'day' %}selected{% endif %}>Filtrar por Día</option>
+                        <option value="all" {% if filter_type == 'all' %}selected{% endif %}>Todo el Histórico</option>
+                    </select>
+                    {% if filter_type == 'day' %}
+                    <input type="date" name="date" value="{{ selected_date }}" onchange="this.form.submit()" style="width: 140px; padding: 5px;">
+                    {% elif filter_type == 'month' %}
+                    <input type="month" name="month" value="{{ selected_month }}" onchange="this.form.submit()" style="width: 140px; padding: 5px;">
+                    {% endif %}
+                </form>
+            </div>
+            <div style="background: #fff4ec; padding: 12px; border-radius: 6px; margin: 15px 0; border: 1px solid #ff8c00;">
+                <p style="margin: 0; font-size: 15px; color: #5c3317;">Total Ingresos Contabilizados (Excluye créditos pendientes): <b style="color: #28a745; font-size: 18px;">$ <span class="money">{{ total_filtered_sales }}</span> COP</b></p>
+            </div>
+            <table>
+                <tr><th>ID</th><th>Cliente</th><th>Ítems vendidos</th><th>Total</th><th>Pago</th><th>Fecha</th><th>Vendedor</th><th>Acción</th></tr>
+                {% for s in sales %}
+                <tr>
+                    <td>{{ s.id }}</td>
+                    <td>{{ s.client_name }}</td>
+                    <td><ul>{% for item in s.items %}<li>{{ item.quantity_sold }}x {{ item.product_name }} ($<script>document.write(formatMoney({{ item.subtotal }}));</script>)</li>{% endfor %}</ul></td>
+                    <td><b>$ <span class="money">{{ s.total_amount }}</span> COP</b></td>
+                    <td><span style="padding: 3px 6px; border-radius: 4px; font-size: 11px; background: {% if s.payment_method == 'Credito' %}#ffe6e6; color: #a00; font-weight: bold;{% else %}#e6ffe6; color: #0a0;{% endif %};">{{ s.payment_method }}</span></td>
+                    <td>{{ s.date_sold }}</td>
+                    <td><b>{{ s.seller }}</b></td>
+                    <td><a href="/receipt/{{ s.id }}" target="_blank">🖨️ Recibo</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" style="text-align: center; color: #777;">No hay ventas registradas.</td></tr>
+                {% endfor %}
+            </table>
+
+            <div style="margin: 20px 0; display: flex; gap: 15px; flex-wrap: wrap;">
+                <a href="/download/excel" style="background: #5c3317; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold;">📥 Descargar Ventas en Excel</a>
+                <a href="/download/clients/excel" style="background: #ff8c00; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold;">👥 Descargar Base de Clientes en Excel</a>
+            </div>
+        </div>
+
+        <!-- 10. REPORTE GRÁFICO -->
+        <div id="tab-graficos" class="tab-section">
+            <h2>📊 Comportamiento Gráfico de Ventas</h2>
+            <div class="card">
+                <h3>Tendencia de Ingresos</h3>
+                <p style="color: #777; font-size: 13px;">Gráfico dinámico basado en las ventas registradas.</p>
+                <div style="width: 100%; max-width: 700px; margin: 20px auto;">
+                    <canvas id="salesChart"></canvas>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if current_user.role == 'employee' %}
+        <!-- Pestaña de Clientes para el Empleado -->
+        <div id="tab-clientes-emp" class="tab-section">
+            <h2>👥 Registrar Cliente</h2>
+            <div class="card" style="max-width: 400px;">
+                <form method="POST">
+                    <input type="hidden" name="add_client" value="1">
+                    <p><input type="text" name="client_name" placeholder="Nombre / Empresa" required style="width: 100%;"></p>
+                    <p><input type="text" name="client_phone" placeholder="Teléfono" style="width: 100%;"></p>
+                    <p><input type="text" name="client_address" placeholder="Dirección" style="width: 100%;"></p>
+                    <p style="margin-top: 8px;">
+                        <label style="cursor: pointer; font-weight: bold; color: #5c3317;">
+                            <input type="checkbox" name="is_corporate" style="width: auto;"> ¿Es cliente empresarial (crédito)?
+                        </label>
+                    </p>
+                    <br>
+                    <button type="submit" style="background: #5c3317; width: 100%;">Registrar Cliente</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            document.querySelectorAll('.money').forEach(el => {
+                const val = parseFloat(el.innerText);
+                if (!isNaN(val)) el.innerText = formatMoney(val);
+            });
+
+            {% if current_user.role == 'admin' %}
+            const ctx = document.getElementById('salesChart');
+            if(ctx) {
+                const salesData = {};
+                {% for s in sales %}
+                    {% if s.payment_method != 'Credito' %}
+                    const fecha = "{{ s.date_sold }}".split(' ')[0];
+                    const monto = {{ s.total_amount }};
+                    if (salesData[fecha]) { salesData[fecha] += monto; } else { salesData[fecha] = monto; }
+                    {% endif %}
+                {% endfor %}
+
+                const labels = Object.keys(salesData).sort();
+                const dataValues = labels.map(date => salesData[date]);
+
+                new Chart(ctx.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: labels.length > 0 ? labels : ['Sin ventas al contado'],
+                        datasets: [{
+                            label: 'Ingresos al contado en COP ($)',
+                            data: dataValues.length > 0 ? dataValues : [0],
+                            backgroundColor: 'rgba(255, 140, 0, 0.6)',
+                            borderColor: 'rgba(92, 51, 23, 1)',
+                            borderWidth: 2,
+                            borderRadius: 5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) { return '$' + formatMoney(value); }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            {% endif %}
+        });
+    </script>
+</body>
+</html>

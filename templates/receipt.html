@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Recibo de Venta #{{ sale.id }} - Mimy</title>
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            color: #000;
+            background: #fff;
+            margin: 0;
+            padding: 20px;
+        }
+        .receipt-container {
+            max-width: 320px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 15px;
+            border: 1px dashed #ccc;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .bold {
+            font-weight: bold;
+        }
+        .line {
+            border-top: 1px dashed #000;
+            margin: 10px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        th, td {
+            padding: 4px 0;
+            text-align: left;
+            vertical-align: top;
+        }
+        th {
+            border-bottom: 1px dashed #000;
+        }
+        .right {
+            text-align: right;
+        }
+    </style>
+    <script>
+        function formatMoney(amount) {
+            return new Intl.NumberFormat('es-CO').format(amount);
+        }
+        document.addEventListener("DOMContentLoaded", function() {
+            document.querySelectorAll('.money').forEach(el => {
+                const val = parseFloat(el.innerText);
+                if (!isNaN(val)) el.innerText = formatMoney(val);
+            });
+            // Auto-imprimir opcional o dejar listo para ver
+            // window.print();
+        });
+    </script>
+</head>
+<body>
+
+    <div class="receipt-container">
+        <!-- ENCABEZADO CENTRADO -->
+        <div class="text-center">
+            <h2 style="margin: 0; font-size: 20px; letter-spacing: 2px;">MIMY</h2>
+            <p style="margin: 3px 0 10px 0; font-size: 11px; text-transform: uppercase; font-weight: bold;">Pastelitos & Congelados</p>
+            <p style="margin: 0; font-size: 14px; font-weight: bold;">Comprobante de Venta</p>
+            <p style="margin: 2px 0 0 0;">Ticket N°: <b>{{ sale.id }}</b></p>
+        </div>
+
+        <div class="line"></div>
+
+        <p style="margin: 3px 0;"><b>Fecha:</b> {{ sale.date_sold }}</p>
+        <p style="margin: 3px 0;"><b>Cliente:</b> {{ sale.client_name }}</p>
+        <p style="margin: 3px 0;"><b>Vendedor:</b> {{ sale.seller }}</p>
+
+        <div class="line"></div>
+
+        <table>
+            <tr>
+                <th>Cant. / Prod</th>
+                <th class="right">Subtotal</th>
+            </tr>
+            {% for item in sale.items %}
+            <tr>
+                <td>{{ item.quantity_sold }}x {{ item.product_name }}</td>
+                <td class="right">$<span class="money">{{ item.subtotal }}</span> COP</td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <div class="line"></div>
+
+        <p class="right" style="font-size: 15px; margin: 5px 0;">
+            <b>TOTAL: $<span class="money">{{ sale.total_amount }}</span> COP</b>
+        </p>
+
+        <div class="line"></div>
+
+        <div class="text-center" style="font-size: 11px; margin-top: 10px;">
+            <p style="margin: 2px 0;">¡Gracias por su compra!</p>
+            <p style="margin: 2px 0;">¡Disfruta lo crujiente y delicioso!</p>
+        </div>
+    </div>
+
+</body>
+</html>
