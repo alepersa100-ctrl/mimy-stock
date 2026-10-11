@@ -1,5 +1,4 @@
 import os
-import pandas as pd
 from flask import Flask, render_template, request, redirect, url_for, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -735,6 +734,7 @@ def receipt(sale_id):
 def download_excel():
     if current_user.role != 'admin':
         return "Acceso denegado", 403
+    import pandas as pd
     data = [{
         'ID Venta': s.id,
         'Cliente': s.client_name,
@@ -757,6 +757,7 @@ def download_excel():
 def download_clients_excel():
     if current_user.role != 'admin':
         return "Acceso denegado", 403
+    import pandas as pd
     data = [{'ID Cliente': c.id, 'Nombre': c.name, 'Teléfono': c.phone, 'Dirección': c.address, 'Empresarial (Crédito)': 'Sí' if c.is_corporate else 'No'} for c in Client.query.all()]
     df = pd.DataFrame(data)
     output = io.BytesIO()
