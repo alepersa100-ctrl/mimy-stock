@@ -2,6 +2,3 @@ Flask==3.0.2
 Flask-SQLAlchemy==3.1.1
 Flask-Login==0.6.3
 gunicorn==21.2.0
-pandas==2.2.1
-numpy==1.26.4
-werkzeug==3.0.1
